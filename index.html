@@ -1,0 +1,821 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Gold Town Defender - Night Siege</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #050510; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        #game-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; display: none; }
+        
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: radial-gradient(circle, #1a1a2e 0%, #050510 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            color: white;
+        }
+
+        #skin-shop { display: none; }
+
+        .menu-card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 30px;
+            border-radius: 15px;
+            border: 2px solid #FFD700;
+            text-align: center;
+            max-width: 80%;
+            box-shadow: 0 0 20px rgba(255, 215, 0, 0.2);
+        }
+
+        .shop-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+            gap: 15px; margin-top: 20px; max-height: 400px; overflow-y: auto; padding: 10px;
+        }
+
+        .skin-item { background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px; border: 1px solid #555; }
+        .skin-item.owned { border-color: #27ae60; background: rgba(39, 174, 96, 0.1); }
+
+        #ui-layer {
+            position: absolute; top: 20px; left: 20px;
+            color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            pointer-events: none; z-index: 10;
+        }
+
+        #exit-button-container {
+            position: absolute; top: 20px; right: 20px;
+            pointer-events: auto; z-index: 50;
+        }
+
+        #action-bar {
+            position: absolute; bottom: 20px; left: 50%;
+            transform: translateX(-50%); display: flex;
+            gap: 10px; pointer-events: auto; flex-wrap: wrap;
+            justify-content: center; width: 95%;
+            z-index: 10; opacity: 0; transition: opacity 0.3s;
+        }
+
+        button {
+            background: linear-gradient(to bottom, #2c3e50, #000000);
+            border: 2px solid #555; border-radius: 8px;
+            padding: 12px 24px; color: white;
+            font-weight: bold; font-size: 16px; cursor: pointer;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3); transition: transform 0.1s;
+        }
+
+        button:active { transform: scale(0.95); }
+        button:hover { border-color: #FFD700; background: #34495e; }
+        .tier-btn { display: flex; flex-direction: column; align-items: center; min-width: 90px; }
+        .cost { font-size: 11px; color: #ffd700; margin-top: 2px; }
+
+        #shop-hint {
+            position: absolute; bottom: 130px; width: 100%;
+            text-align: center; color: #FFD700; font-weight: bold; display: none;
+        }
+        .stat-box { margin-bottom: 5px; font-weight: bold; }
+
+        #skin-prompt {
+            display: none;
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background: #1a1a2e; border: 3px solid #ffd700; padding: 30px;
+            z-index: 200; border-radius: 20px; text-align: center; color: white;
+            box-shadow: 0 0 50px rgba(0,0,0,0.9);
+        }
+
+        #game-over-screen { display: none; }
+
+        .controls-hint {
+            position: absolute; bottom: 20px; right: 20px;
+            color: #aaa; font-size: 12px; background: rgba(0,0,0,0.5);
+            padding: 10px; border-radius: 5px; pointer-events: none;
+        }
+
+        #damage-flash {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 0, 0, 0.3); pointer-events: none;
+            opacity: 0; z-index: 99; transition: opacity 0.1s;
+        }
+
+        #danger-warning {
+            position: fixed; top: 100px; width: 100%; text-align: center;
+            color: #ff4444; font-weight: bold; font-size: 24px;
+            text-shadow: 0 0 10px #000; display: none; pointer-events: none;
+            z-index: 100;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="damage-flash"></div>
+    <div id="danger-warning">⚠️ OUTSIDE SAFE ZONE: SWARM APPROACHING ⚠️</div>
+
+    <!-- Main Home Screen -->
+    <div id="home-screen" class="overlay">
+        <div class="menu-card">
+            <h1 style="font-size: 48px; margin: 0 0 10px 0;">GOLD TOWN</h1>
+            <p>Defend your home. Survive the evolving Siege.</p>
+            <div style="display: flex; gap: 20px; justify-content: center; margin-top: 30px;">
+                <button id="play-btn" onclick="startGame()" style="background: #27ae60; font-size: 24px;">PLAY GAME</button>
+                <button onclick="openShop()" style="background: #2980b9;">SKINS SHOP</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Over Screen -->
+    <div id="game-over-screen" class="overlay">
+        <div class="menu-card">
+            <h1 style="color: #ff3333;">TOWN FALLEN</h1>
+            <p>You defended your town to level <span id="final-level">1</span></p>
+            <button onclick="exitToMenu()" style="background: #27ae60; margin-top: 20px;">RESTART</button>
+        </div>
+    </div>
+
+    <!-- Skin Application Prompt -->
+    <div id="skin-prompt">
+        <h2>Equip Owned Skins?</h2>
+        <p>Apply your character and house costumes for this run?</p>
+        <div style="display: flex; gap: 20px; justify-content: center; margin-top: 20px;">
+            <button onclick="confirmSkins(true)" style="background: #27ae60;">YES, EQUIP ALL</button>
+            <button onclick="confirmSkins(false)" style="background: #c0392b;">NO, USE DEFAULT</button>
+        </div>
+    </div>
+
+    <!-- Skin Shop Screen -->
+    <div id="skin-shop" class="overlay">
+        <div class="menu-card" style="width: 500px;">
+            <h1>Skins & Costumes</h1>
+            <div style="color: #00f2ff; font-weight: bold; margin-bottom: 10px;">💎 Tokens: <span id="token-count">0</span></div>
+            <div class="shop-grid" id="shop-items"></div>
+            <button onclick="closeShop()" style="margin-top: 20px;">BACK TO MENU</button>
+        </div>
+    </div>
+
+    <div id="game-container"></div>
+    
+    <div id="ui-layer" style="display: none;">
+        <div class="stat-box">🎒 Gold: <span id="pocket-gold">0</span></div>
+        <div class="stat-box">💎 Tokens: <span id="hud-tokens">0</span></div>
+        <div class="stat-box">🏠 Level: <span id="house-level">1</span></div>
+        <div class="stat-box">❤️ HP: <span id="player-health">100</span></div>
+        <div class="stat-box">🛡️ Army: <span id="defender-count">0</span></div>
+        <div id="warning-msg" style="color: #FFD700; font-size: 14px; margin-top: 10px;">Reach Level 2 to start the siege!</div>
+    </div>
+
+    <div id="exit-button-container" style="display: none;">
+        <button onclick="exitToMenu()" style="background: #c0392b;">EXIT</button>
+    </div>
+
+    <div id="shop-hint">Go near the center house to build!</div>
+
+    <div id="action-bar">
+        <button class="tier-btn" onclick="upgradeHouse()">
+            <span>🔨 Upgrade House</span>
+            <span class="cost" id="upgrade-cost">Cost: 10 Gold</span>
+        </button>
+        <button class="tier-btn" id="cannon-buy-btn" onclick="buyCannon()">
+            <span>💣 Heavy Cannon</span>
+            <span class="cost" id="cannon-cost">Cost: 1000</span>
+        </button>
+        <button class="tier-btn" onclick="hireDefender('Archer')">
+            <span>🏹 Archer</span>
+            <span class="cost">Cost: 10</span>
+        </button>
+        <button class="tier-btn" onclick="hireDefender('Knight')">
+            <span>⚔️ Knight</span>
+            <span class="cost">Cost: 30</span>
+        </button>
+        <button class="tier-btn" onclick="hireDefender('Mage')">
+            <span>🔥 Mage</span>
+            <span class="cost">Cost: 60</span>
+        </button>
+        <button class="tier-btn" onclick="hireCollector()">
+            <span>👷 Collector</span>
+            <span class="cost">Cost: 50</span>
+        </button>
+    </div>
+
+    <div class="controls-hint">WASD: Move | E: Attack</div>
+
+    <script>
+        // --- Constants & Config ---
+        const SAFE_ZONE_RADIUS = 80; 
+        const SWARM_MAX_MONSTERS = 100;
+        const GOLD_SPAWN_START = 85; 
+
+        // --- Input Management ---
+        const keys = { w:false, a:false, s:false, d:false };
+        window.addEventListener('keydown', e => { 
+            const k = e.key.toLowerCase();
+            if(k in keys) keys[k] = true; 
+            if(k === 'e') playerAttack(); 
+        });
+        window.addEventListener('keyup', e => { 
+            const k = e.key.toLowerCase();
+            if(k in keys) keys[k] = false; 
+        });
+
+        // --- Game State Variables ---
+        let pocketGold = 0;
+        let tokens = 0; 
+        let houseLevel = 1;
+        let playerHp = 100;
+        let isGameRunning = false;
+        let cannonCount = 0;
+        let cannonCooldowns = [];
+
+        // Skin System Data
+        let ownedSkins = ['Default'];
+        let activeSkins = { house: 'Default', knight: 'Default', collector: 'Default', archer: 'Default', mage: 'Default' };
+        const skinsData = [
+            { id: 'tree_knight', name: 'Xmas Knight', type: 'knight', cost: 5, color: 0x2d5a27 },
+            { id: 'snowman_col', name: 'Snowman Col', type: 'collector', cost: 3, color: 0xffffff },
+            { id: 'santa_arch', name: 'Santa Arch', type: 'archer', cost: 4, color: 0xff0000 },
+            { id: 'royal_house', name: 'Gold Palace', type: 'house', cost: 15, color: 0xffd700 },
+            { id: 'emerald_house', name: 'Emerald Tower', type: 'house', cost: 10, color: 0x2ecc71 }
+        ];
+
+        // --- Three.js Initialization ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x050510);
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth/window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.getElementById('game-container').appendChild(renderer.domElement);
+
+        scene.add(new THREE.AmbientLight(0x444466, 0.8));
+        const playerLight = new THREE.PointLight(0xffffaa, 2, 40);
+        scene.add(playerLight);
+
+        // Ground and Safe Zone Visual
+        const ground = new THREE.Mesh(new THREE.PlaneGeometry(1000, 1000), new THREE.MeshStandardMaterial({ color: 0x111115 }));
+        ground.rotation.x = -Math.PI/2;
+        scene.add(ground);
+
+        const safeZoneRing = new THREE.Mesh(
+            new THREE.RingGeometry(SAFE_ZONE_RADIUS - 1, SAFE_ZONE_RADIUS + 1, 128),
+            new THREE.MeshBasicMaterial({ color: 0x00ffaa, transparent: true, opacity: 0.2, side: THREE.DoubleSide })
+        );
+        safeZoneRing.rotation.x = -Math.PI/2;
+        safeZoneRing.position.y = 0.05;
+        scene.add(safeZoneRing);
+
+        // Player Model
+        const player = new THREE.Mesh(new THREE.BoxGeometry(1.2, 2.2, 1.2), new THREE.MeshStandardMaterial({ color: 0x3498db }));
+        player.position.set(15, 1.1, 15);
+        scene.add(player);
+
+        const attackRing = new THREE.Mesh(new THREE.RingGeometry(1.8, 8, 32), new THREE.MeshBasicMaterial({ color: 0x00f2ff, transparent: true, opacity: 0, side: THREE.DoubleSide }));
+        attackRing.rotation.x = -Math.PI/2;
+        attackRing.position.y = -1.05;
+        player.add(attackRing);
+
+        const houseGroup = new THREE.Group();
+        const houseBase = new THREE.Mesh(new THREE.BoxGeometry(7, 7, 7), new THREE.MeshStandardMaterial({ color: 0x4a3a2a, transparent: true }));
+        houseBase.position.y = 3.5;
+        houseGroup.add(houseBase);
+        scene.add(houseGroup);
+
+        let entities = [], goldOrbs = [], collectors = [], projectiles = [], cannonMeshes = [];
+
+        // --- Game Logic Functions ---
+
+        function startGame() {
+            if (ownedSkins.length > 1) {
+                document.getElementById('home-screen').style.display = 'none';
+                document.getElementById('skin-prompt').style.display = 'block';
+            } else {
+                confirmSkins(false);
+            }
+        }
+
+        function confirmSkins(choice) {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('skin-prompt').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+            document.getElementById('ui-layer').style.display = 'block';
+            document.getElementById('exit-button-container').style.display = 'block';
+            document.getElementById('game-over-screen').style.display = 'none';
+            
+            if (choice) {
+                skinsData.forEach(s => { if(ownedSkins.includes(s.id)) activeSkins[s.type] = s.id; });
+            } else {
+                activeSkins = { house: 'Default', knight: 'Default', collector: 'Default', archer: 'Default', mage: 'Default' };
+            }
+
+            resetGameState();
+            applySkins();
+            isGameRunning = true;
+            updateUI();
+        }
+
+        function resetGameState() {
+            pocketGold = 0;
+            houseLevel = 1;
+            playerHp = 100;
+            cannonCount = 0;
+            cannonCooldowns = [];
+            
+            entities.forEach(e => scene.remove(e));
+            goldOrbs.forEach(g => scene.remove(g));
+            collectors.forEach(c => scene.remove(c));
+            projectiles.forEach(p => scene.remove(p));
+            cannonMeshes.forEach(c => houseGroup.remove(c));
+            
+            entities = []; goldOrbs = []; collectors = []; projectiles = []; cannonMeshes = [];
+            player.position.set(15, 1.1, 15);
+            updateHouseVisuals();
+        }
+
+        function exitToMenu() {
+            isGameRunning = false;
+            document.getElementById('home-screen').style.display = 'flex';
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('ui-layer').style.display = 'none';
+            document.getElementById('exit-button-container').style.display = 'none';
+            document.getElementById('game-over-screen').style.display = 'none';
+        }
+
+        function openShop() {
+            document.getElementById('home-screen').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block'; 
+            document.getElementById('skin-shop').style.display = 'flex';
+            updateShopUI();
+        }
+
+        function closeShop() {
+            document.getElementById('skin-shop').style.display = 'none';
+            document.getElementById('game-container').style.display = 'none';
+            document.getElementById('home-screen').style.display = 'flex';
+            activeSkins.house = 'Default';
+            applySkins();
+        }
+
+        function buySkin(id) {
+            const skin = skinsData.find(s => s.id === id);
+            if (ownedSkins.includes(id)) return;
+            if (tokens >= skin.cost) {
+                tokens -= skin.cost;
+                ownedSkins.push(id);
+                updateShopUI();
+            } else {
+                if (skin.type === 'house') houseBase.material.color.set(skin.color);
+            }
+        }
+
+        function updateShopUI() {
+            document.getElementById('token-count').innerText = tokens;
+            const container = document.getElementById('shop-items');
+            container.innerHTML = '';
+            skinsData.forEach(skin => {
+                const isOwned = ownedSkins.includes(skin.id);
+                const div = document.createElement('div');
+                div.className = `skin-item ${isOwned ? 'owned' : ''}`;
+                div.innerHTML = `
+                    <div style="font-weight:bold">${skin.name}</div>
+                    <div style="font-size:10px;color:#aaa">${skin.type.toUpperCase()}</div>
+                    <div style="margin: 5px 0; color: #00f2ff">${isOwned ? 'OWNED' : '💎 ' + skin.cost}</div>
+                    <button onclick="buySkin('${skin.id}')" style="padding:4px; font-size:11px; width:100%;">
+                        ${isOwned ? 'OWNED' : 'BUY'}
+                    </button>`;
+                container.appendChild(div);
+            });
+        }
+
+        function applySkins() {
+            const hSkin = skinsData.find(s => s.id === activeSkins.house);
+            houseBase.material.color.set(hSkin ? hSkin.color : 0x4a3a2a);
+        }
+
+        function updateHouseVisuals() {
+            let width = Math.min(10, 6 + (houseLevel * 0.4));
+            let height = 7 + (houseLevel > 10 ? (houseLevel - 10) * 1.5 : houseLevel * 0.5);
+            houseBase.geometry.dispose();
+            houseBase.geometry = new THREE.BoxGeometry(width, height, width);
+            houseBase.position.y = height / 2;
+            
+            cannonMeshes.forEach((c, i) => {
+                let angle = (i * 137.5) * (Math.PI / 180);
+                let r = width / 3;
+                c.position.set(Math.cos(angle) * r, height + 0.5, Math.sin(angle) * r);
+            });
+        }
+
+        function upgradeHouse() {
+            let cost = houseLevel * 10;
+            if (pocketGold >= cost) {
+                pocketGold -= cost;
+                houseLevel++;
+                if (houseLevel % 5 === 0) tokens++;
+                updateHouseVisuals();
+                updateUI();
+            }
+        }
+
+        function buyCannon() {
+            let cost = 1000;
+            if (pocketGold >= cost && cannonCount < 100) {
+                pocketGold -= cost;
+                cannonCount++;
+                
+                const cannonGroup = new THREE.Group();
+                const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.6, 2.5), new THREE.MeshStandardMaterial({color: 0x222222, metalness: 0.8, roughness: 0.2}));
+                barrel.rotation.x = Math.PI/2;
+                barrel.position.z = 1.0;
+                cannonGroup.add(barrel);
+                
+                const base = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.5, 1.2), new THREE.MeshStandardMaterial({color: 0x111111}));
+                cannonGroup.add(base);
+
+                let h = houseBase.geometry.parameters.height;
+                let w = houseBase.geometry.parameters.width;
+                let angle = (cannonCount * 137.5) * (Math.PI / 180);
+                let r = w / 3;
+                
+                cannonGroup.position.set(Math.cos(angle) * r, h + 0.5, Math.sin(angle) * r);
+                
+                houseGroup.add(cannonGroup);
+                cannonMeshes.push(cannonGroup);
+                
+                cannonCooldowns.push({ timer: 0, recoil: 0 });
+                updateUI();
+            }
+        }
+
+        function hireDefender(type) {
+            const configs = {
+                Archer: { cost: 10, color: 0x27ae60, hp: 80, range: 35, speed: 0.07, damage: 15, projectile: 'arrow' },
+                Knight: { cost: 30, color: 0x7f8c8d, hp: 200, range: 6, speed: 0.12, damage: 25, projectile: 'melee' },
+                Mage: { cost: 60, color: 0x9b59b6, hp: 60, range: 60, speed: 0.03, damage: 8, projectile: 'fireball' }
+            };
+            let cfg = configs[type];
+            if (pocketGold >= cfg.cost) {
+                pocketGold -= cfg.cost;
+                const skin = skinsData.find(s => s.id === activeSkins[type.toLowerCase()]);
+                const mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 2), new THREE.MeshStandardMaterial({color: skin ? skin.color : cfg.color}));
+                
+                const spawnAngle = Math.random() * Math.PI * 2;
+                const spawnRadius = 8 + Math.random() * 6;
+                mesh.position.set(Math.cos(spawnAngle) * spawnRadius, 1, Math.sin(spawnAngle) * spawnRadius);
+
+                mesh.userData = { ...cfg, type: type.toLowerCase(), isDefender: true, cooldown: 0, currentHp: cfg.hp };
+                scene.add(mesh);
+                entities.push(mesh);
+                updateUI();
+            }
+        }
+
+        function hireCollector() {
+            if (pocketGold >= 50) {
+                pocketGold -= 50;
+                const skin = skinsData.find(s => s.id === activeSkins.collector);
+                const mesh = new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.5, 0.9), new THREE.MeshStandardMaterial({color: skin ? skin.color : 0xf1c40f}));
+                mesh.position.set(4, 0.75, 4);
+                mesh.userData = { type: 'collector', isDefender: false, currentHp: 70, speed: 0.2 };
+                scene.add(mesh);
+                collectors.push(mesh);
+                updateUI();
+            }
+        }
+
+        function playerAttack() {
+            if(!isGameRunning) return;
+            attackRing.material.opacity = 1.0;
+            entities.forEach(ent => {
+                if (ent.userData.type.includes('monster') && ent.position.distanceTo(player.position) < 8) {
+                    ent.userData.currentHp -= 40; 
+                    ent.position.add(new THREE.Vector3().subVectors(ent.position, player.position).normalize().multiplyScalar(2));
+                }
+            });
+        }
+
+        function shoot(start, target, damage, type = 'arrow') {
+            const pColor = type === 'fireball' ? 0xff4500 : (type === 'cannonball' ? 0x222222 : 0xffff00);
+            const pSize = type === 'fireball' ? 0.5 : (type === 'cannonball' ? 1.0 : 0.3);
+            const p = new THREE.Mesh(new THREE.SphereGeometry(pSize), new THREE.MeshStandardMaterial({color: pColor, emissive: type === 'fireball' ? 0xff4500 : 0x000000}));
+            p.position.copy(start);
+            const dir = new THREE.Vector3().subVectors(target, start).normalize();
+            
+            const speed = type === 'cannonball' ? 2.2 : 1.2;
+            const life = type === 'cannonball' ? 120 : 100;
+
+            p.userData = { 
+                velocity: dir.multiplyScalar(speed), 
+                life: life, 
+                damage: damage, 
+                isFireball: type === 'fireball',
+                isCannonball: type === 'cannonball',
+                hitEntities: [], 
+                pierceCount: 2   
+            };
+            scene.add(p);
+            projectiles.push(p);
+        }
+
+        function spawnMonster(isSwarm = false) {
+            // GREEN for swarm monsters (outside field), BLUE for regular siege monsters
+            const color = isSwarm ? 0x27ae60 : 0x3498db; 
+            const size = isSwarm ? 1.5 : 2;
+            const m = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshStandardMaterial({color: color}));
+            
+            let angle = Math.random() * Math.PI * 2;
+            let distance = isSwarm ? SAFE_ZONE_RADIUS + 15 + Math.random() * 25 : 180;
+            
+            m.position.set(Math.cos(angle)*distance, size/2, Math.sin(angle)*distance);
+            m.userData = { 
+                type: isSwarm ? 'monster_swarm' : 'monster', 
+                currentHp: (isSwarm ? 20 : 40) + houseLevel*15, 
+                speed: (isSwarm ? 0.18 : 0.08) + (houseLevel * 0.005), 
+                burnTicks: 0, 
+                lastBurnTime: 0 
+            };
+            scene.add(m); 
+            entities.push(m);
+        }
+
+        // --- Main Game Loop ---
+        function update() {
+            if (!isGameRunning) {
+                if (document.getElementById('skin-shop').style.display === 'flex') {
+                    renderer.render(scene, camera);
+                }
+                requestAnimationFrame(update);
+                return;
+            }
+
+            // Player Movement
+            const move = new THREE.Vector3(0,0,0);
+            if(keys.w) move.z -= 1; if(keys.s) move.z += 1;
+            if(keys.a) move.x -= 1; if(keys.d) move.x += 1;
+            if(move.length() > 0) player.position.add(move.normalize().multiplyScalar(0.4));
+
+            attackRing.material.opacity *= 0.85;
+            const playerDist = player.position.distanceTo(new THREE.Vector3(0,0,0));
+            const inHouseZone = playerDist < 12;
+            const isOutsideSafeZone = playerDist > SAFE_ZONE_RADIUS;
+            
+            // Safe Zone UI Logic
+            document.getElementById('danger-warning').style.display = isOutsideSafeZone ? 'block' : 'none';
+            safeZoneRing.material.color.set(isOutsideSafeZone ? 0xff4444 : 0x00ffaa);
+
+            document.getElementById('action-bar').style.opacity = inHouseZone ? 1 : 0;
+            document.getElementById('action-bar').style.pointerEvents = inHouseZone ? 'auto' : 'none';
+            document.getElementById('shop-hint').style.display = inHouseZone ? 'none' : 'block';
+
+            let monsters = entities.filter(e => e.userData.type.includes('monster'));
+            let swarmCount = entities.filter(e => e.userData.type === 'monster_swarm').length;
+            let potentialMonsterTargets = [player, ...entities.filter(e => e.userData.isDefender), ...collectors];
+
+            // Swarm Spawning Logic: Only spawn if player is in the "Danger Zone"
+            if (isOutsideSafeZone && swarmCount < SWARM_MAX_MONSTERS) {
+                if (Math.random() < 0.15) spawnMonster(true);
+            }
+
+            // Cannon AI & Visuals
+            cannonCooldowns.forEach((cd, i) => {
+                const mesh = cannonMeshes[i];
+                if (cd.timer > 0) cd.timer--;
+                if (cd.recoil > 0) {
+                    mesh.children[0].position.z = 1.0 - (cd.recoil * 0.2);
+                    cd.recoil *= 0.8;
+                } else {
+                    mesh.children[0].position.z = 1.0;
+                }
+                if (monsters.length > 0) {
+                    let closest = null;
+                    let minDist = 120; 
+                    monsters.forEach(m => {
+                        let d = mesh.getWorldPosition(new THREE.Vector3()).distanceTo(m.position);
+                        if (d < minDist) { minDist = d; closest = m; }
+                    });
+                    if (closest) {
+                        const worldPos = new THREE.Vector3();
+                        mesh.getWorldPosition(worldPos);
+                        mesh.lookAt(new THREE.Vector3(closest.position.x, worldPos.y, closest.position.z));
+                        if (cd.timer <= 0) {
+                            shoot(worldPos, closest.position, 150, 'cannonball');
+                            cd.timer = 500;
+                            cd.recoil = 1.0;
+                        }
+                    }
+                }
+            });
+
+            // Entity AI
+            for(let i = entities.length-1; i >= 0; i--) {
+                const ent = entities[i];
+                if (ent.userData.type.includes('monster')) {
+                    const distToCenter = ent.position.distanceTo(new THREE.Vector3(0,0,0));
+                    
+                    // Despawn swarm monsters if player retreats and they are too far from player
+                    if (ent.userData.type === 'monster_swarm' && !isOutsideSafeZone && ent.position.distanceTo(player.position) > 100) {
+                        scene.remove(ent);
+                        entities.splice(i, 1);
+                        continue;
+                    }
+
+                    if (ent.userData.burnTicks > 0) {
+                        if (Date.now() - ent.userData.lastBurnTime > 1000) {
+                            ent.userData.currentHp -= 1;
+                            ent.userData.burnTicks--;
+                            ent.userData.lastBurnTime = Date.now();
+                        }
+                    }
+
+                    let nearestTarget = null;
+                    let minDist = 999;
+                    potentialMonsterTargets.forEach(target => {
+                        let d = ent.position.distanceTo(target.position);
+                        if (d < minDist) { minDist = d; nearestTarget = target; }
+                    });
+
+                    if (nearestTarget) {
+                        const targetDist = nearestTarget.position.distanceTo(new THREE.Vector3(0,0,0));
+                        const isSwarm = ent.userData.type === 'monster_swarm';
+                        
+                        // RESTRICTION: Swarm monsters cannot cross the safe zone boundary
+                        const crossingForbidden = isSwarm && targetDist < SAFE_ZONE_RADIUS && distToCenter <= SAFE_ZONE_RADIUS + 2;
+
+                        if (!crossingForbidden) {
+                            ent.lookAt(nearestTarget.position);
+                            if (minDist > 1.8) {
+                                let moveDir = new THREE.Vector3().subVectors(nearestTarget.position, ent.position).normalize();
+                                let nextPos = ent.position.clone().add(moveDir.clone().multiplyScalar(ent.userData.speed));
+                                
+                                // Physical block for Swarm Monsters at safe zone edge
+                                if (isSwarm && nextPos.distanceTo(new THREE.Vector3(0,0,0)) < SAFE_ZONE_RADIUS) {
+                                    let radial = nextPos.clone().normalize().multiplyScalar(SAFE_ZONE_RADIUS + 0.5);
+                                    ent.position.set(radial.x, ent.position.y, radial.z);
+                                } else {
+                                    ent.position.copy(nextPos);
+                                }
+                            } else {
+                                if (nearestTarget === player) {
+                                    playerHp -= 0.3;
+                                    showDamage();
+                                } else {
+                                    nearestTarget.userData.currentHp -= 0.8;
+                                }
+                            }
+                        } else {
+                            // If they are stuck at the force field, they just stare at you angrily
+                            ent.lookAt(new THREE.Vector3(0, ent.position.y, 0));
+                        }
+                    }
+                    
+                    if (ent.position.distanceTo(new THREE.Vector3(0,0,0)) < 5) {
+                        playerHp -= 0.5;
+                        showDamage();
+                    }
+                } else if (ent.userData.isDefender) {
+                    let nearestMonster = null;
+                    let mDist = 999;
+                    monsters.forEach(m => {
+                        let d = ent.position.distanceTo(m.position);
+                        if(d < mDist) { mDist = d; nearestMonster = m; }
+                    });
+
+                    if (nearestMonster && mDist < ent.userData.range) {
+                        ent.lookAt(nearestMonster.position);
+                        if (ent.userData.cooldown <= 0) {
+                            if (ent.userData.projectile === 'melee') {
+                                nearestMonster.userData.currentHp -= ent.userData.damage;
+                            } else {
+                                shoot(ent.position, nearestMonster.position, ent.userData.damage, ent.userData.projectile);
+                            }
+                            ent.userData.cooldown = ent.userData.type === 'mage' ? 90 : 45;
+                        }
+                    } else if (nearestMonster && ent.userData.type !== 'mage') {
+                        ent.position.add(new THREE.Vector3().subVectors(nearestMonster.position, ent.position).normalize().multiplyScalar(ent.userData.speed));
+                    }
+                    if (ent.userData.cooldown > 0) ent.userData.cooldown--;
+                }
+
+                if (ent.userData.currentHp <= 0) {
+                    if(ent.userData.type.includes('monster')) { 
+                        pocketGold += (ent.userData.type === 'monster_swarm' ? 2 : 10); 
+                        if(Math.random() < 0.2) tokens++;
+                        updateUI(); 
+                    }
+                    scene.remove(ent); 
+                    entities.splice(i, 1);
+                }
+            }
+
+            // Collector AI
+            for (let i = collectors.length - 1; i >= 0; i--) {
+                const c = collectors[i];
+                if (c.userData.currentHp <= 0) {
+                    scene.remove(c);
+                    collectors.splice(i, 1);
+                    updateUI();
+                    continue;
+                }
+                let nearestOrb = null;
+                let minDist = 999;
+                goldOrbs.forEach(o => {
+                    let d = c.position.distanceTo(o.position);
+                    if(d < minDist) { minDist = d; nearestOrb = o; }
+                });
+                if(nearestOrb) {
+                    c.position.add(new THREE.Vector3().subVectors(nearestOrb.position, c.position).normalize().multiplyScalar(c.userData.speed));
+                    if(c.position.distanceTo(nearestOrb.position) < 2) {
+                        scene.remove(nearestOrb);
+                        goldOrbs.splice(goldOrbs.indexOf(nearestOrb), 1);
+                        pocketGold += 5; updateUI();
+                    }
+                }
+            }
+
+            // Projectile Physics
+            for(let i = projectiles.length-1; i >= 0; i--) {
+                const p = projectiles[i]; 
+                p.position.add(p.userData.velocity); 
+                p.userData.life--;
+                entities.forEach(m => {
+                    if (m.userData.type.includes('monster') && p.position.distanceTo(m.position) < 4) {
+                        if (p.userData.isCannonball) {
+                            if (!p.userData.hitEntities.includes(m)) {
+                                m.userData.currentHp -= p.userData.damage;
+                                p.userData.hitEntities.push(m);
+                                p.userData.pierceCount--;
+                                if (p.userData.pierceCount <= 0) p.userData.life = 0;
+                            }
+                        } else {
+                            m.userData.currentHp -= p.userData.damage;
+                            if (p.userData.isFireball) { m.userData.burnTicks = 10; m.userData.lastBurnTime = 0; }
+                            p.userData.life = 0;
+                        }
+                    }
+                });
+                if(p.userData.life <= 0) { scene.remove(p); projectiles.splice(i, 1); }
+            }
+
+            // Spawning Gold: Only outside safe zone
+            if(Math.random() < 0.08) {
+                const o = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshBasicMaterial({color: 0xffd700}));
+                const angle = Math.random() * Math.PI * 2;
+                const dist = GOLD_SPAWN_START + Math.random() * 80;
+                o.position.set(Math.cos(angle)*dist, 0.5, Math.sin(angle)*dist);
+                scene.add(o); goldOrbs.push(o);
+            }
+            for(let i = goldOrbs.length-1; i >= 0; i--) {
+                if(player.position.distanceTo(goldOrbs[i].position) < 3) {
+                    pocketGold++; updateUI(); scene.remove(goldOrbs[i]); goldOrbs.splice(i, 1);
+                }
+            }
+            
+            // Regular Siege Spawning (BLUE MONSTERS)
+            if(houseLevel >= 2) {
+                document.getElementById('warning-msg').style.display = 'none';
+                if(Math.random() < 0.01 + (houseLevel - 1)*0.002) {
+                    spawnMonster(false);
+                }
+            } else {
+                document.getElementById('warning-msg').style.display = 'block';
+            }
+
+            if (playerHp <= 0) { 
+                isGameRunning = false; 
+                document.getElementById('game-over-screen').style.display = 'flex';
+                document.getElementById('final-level').innerText = houseLevel;
+            }
+
+            playerLight.position.copy(player.position).y = 6;
+            camera.position.lerp(new THREE.Vector3(player.position.x, 70, player.position.z + 50), 0.1);
+            camera.lookAt(player.position);
+            renderer.render(scene, camera);
+            requestAnimationFrame(update);
+        }
+
+        function showDamage() {
+            const flash = document.getElementById('damage-flash');
+            flash.style.opacity = "1";
+            setTimeout(() => flash.style.opacity = "0", 100);
+            updateUI();
+        }
+
+        function updateUI() {
+            document.getElementById('pocket-gold').innerText = Math.floor(pocketGold);
+            document.getElementById('hud-tokens').innerText = tokens;
+            document.getElementById('house-level').innerText = houseLevel;
+            document.getElementById('player-health').innerText = Math.max(0, Math.ceil(playerHp));
+            document.getElementById('defender-count').innerText = (entities.filter(e => e.userData.isDefender).length + collectors.length);
+            document.getElementById('upgrade-cost').innerText = "Cost: " + (houseLevel * 10);
+        }
+
+        window.addEventListener('resize', () => { 
+            camera.aspect = window.innerWidth/window.innerHeight; 
+            camera.updateProjectionMatrix(); 
+            renderer.setSize(window.innerWidth, window.innerHeight); 
+        });
+
+        updateUI();
+        update();
+    </script>
+</body>
+</html>
